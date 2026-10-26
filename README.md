@@ -57,7 +57,7 @@ npm install
 npm run dev
 ```
 
-브라우저에서 `http://localhost:5173`을 열면 Vite가 `/api` 요청을 `http://localhost:8080`으로 전달합니다.
+브라우저에서 `http://localhost:6006`을 열면 Vite가 `/api` 요청을 `http://localhost:8080`으로 전달합니다.
 
 ## 검증
 
@@ -105,9 +105,9 @@ $env:GEMINI_API_KEY = "your-server-side-key"
 
 ## 주요 파일
 
-- `frontend/src/App.tsx` — 대시보드 UI와 상호작용
-- `frontend/src/api/auditApi.ts` — BFF 요청/오류 처리
-- `frontend/src/store/useAuditStore.ts` — 분석 상태와 API 결과 반영
+- `frontend/src/App.tsx` — 앱 셸과 페이지 조합
+- `frontend/src/features/audit` — URL 입력, 분석 로딩, 결과 화면과 감사 상태
+- `frontend/src/components/layout` — 사이드바와 상단바를 포함한 공통 레이아웃
 - `frontend/vite.config.ts` — React/Tailwind 플러그인과 개발 프록시
 - `backend/pom.xml` — WebFlux, Validation, Actuator, Jsoup, Playwright 프로필
 - `backend/src/main/java/com/aeolens/api/audit` — URL 검증, 크롤링, 정적 분석, API 계약
