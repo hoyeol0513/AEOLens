@@ -24,6 +24,14 @@ export function ResultOverview({ result, onShowIssues }: ResultOverviewProps) {
     document.getElementById('issues')?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  const aiHeading = ai.status === 'complete'
+    ? <>Context review complete.<br />Start with the biggest impact.</>
+    : ai.status === 'unavailable'
+      ? <>Static diagnosis is ready.<br />AI context was unavailable.</>
+      : ai.status === 'not-configured'
+        ? <>Static diagnosis is ready.<br />AI context is waiting.</>
+        : <>Your analysis is ready.<br />AI context is processing.</>
+
   return (
     <>
       <section className="metrics-grid" aria-label="Audit score summary">
@@ -51,8 +59,9 @@ export function ResultOverview({ result, onShowIssues }: ResultOverviewProps) {
         <section className="card ai-card">
           <div className="ai-glow" />
           <div className="ai-card-top"><span><Icon name="sparkles" size={17} /></span><small>AI INSIGHT</small></div>
-          <h2>{ai.status === 'not-configured' ? <>Static diagnosis is ready.<br />AI context is waiting.</> : <>Your analysis is ready.<br />Start with the biggest impact.</>}</h2>
+          <h2>{aiHeading}</h2>
           <p>{ai.feedback}</p>
+          {ai.status === 'complete' && ai.score !== null && <div className="ai-context-score"><span>Contextual AEO score</span><strong>{ai.score}</strong><small>/ 100</small></div>}
           <div className="priority-fix"><span>Highest-impact fix</span><strong>{highestImpactIssue?.title ?? 'No priority issue found'}</strong><small>{highestImpactIssue?.fix ?? 'Keep monitoring the page as it changes.'}</small></div>
           {highestImpactIssue && <button type="button" className="ai-action" onClick={showPriorityIssues}>View action plan <Icon name="arrow" size={17} /></button>}
         </section>

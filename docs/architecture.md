@@ -21,17 +21,18 @@ flowchart LR
     B --> V[Public URL validation]
     V --> C[Static HTML crawler]
     C --> J[Jsoup rule engine]
-    J --> R[AEO and A11y report]
+    J --> R
+    J -->|server key configured| G[Optional Gemini contextual analysis]
+    G --> R[AEO and A11y report]
     R --> H[Anonymous audit history]
     H --> D[(PostgreSQL)]
     D -->|guest-scoped list and detail| B
     B --> F
     C -->|CSR suspected| P[Playwright dynamic analyzer]
     P -->|rendered DOM and visual metrics| J
-    J -. extracted text .-> G[Gemini contextual analysis]
 ```
 
-Solid arrows are implemented. The dashed path represents the planned AI phase.
+All paths are implemented. Gemini is skipped when no server-side API key is configured.
 
 ## Design decisions
 
@@ -46,3 +47,5 @@ Solid arrows are implemented. The dashed path represents the planned AI phase.
 - Audit list, detail, and delete queries always include the resolved guest ID, so knowing another audit UUID is not sufficient to access it.
 - Stored history contains the report JSON, summary scores, target URL, and timestamp—not the fetched source HTML. Guest sessions and audits use a rolling 90-day retention period, with scheduled cleanup for expired rows.
 - The browser cookie deliberately avoids signup friction. Clearing it or switching browsers breaks access to the old anonymous history; JSON export remains the portable fallback until optional account linking is introduced.
+- Gemini receives only normalized visible text, capped at 12,000 characters. Page content is explicitly treated as untrusted data, and a structured response schema constrains the result to a score and concise feedback.
+- Contextual scoring is blended into the rule-based AEO score at a 30% weight. API errors and timeouts return an `unavailable` AI status while preserving the deterministic audit instead of failing the request.

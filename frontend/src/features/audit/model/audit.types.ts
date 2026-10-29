@@ -26,7 +26,7 @@ export interface AuditResult {
     validJsonLdBlocks: number
   }
   ai: {
-    status: 'ready' | 'not-configured' | 'complete'
+    status: 'ready' | 'not-configured' | 'complete' | 'unavailable'
     score: number | null
     feedback: string
   }

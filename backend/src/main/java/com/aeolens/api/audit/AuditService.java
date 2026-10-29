@@ -29,22 +29,23 @@ public class AuditService {
     private final TargetUrlValidator targetUrlValidator;
     private final StaticAuditAnalyzer staticAuditAnalyzer;
     private final DynamicPageAnalyzer dynamicPageAnalyzer;
+    private final GeminiAssessmentService geminiAssessmentService;
     private final WebClient webClient;
     private final Duration responseTimeout;
-    private final boolean aiConfigured;
 
     public AuditService(
             TargetUrlValidator targetUrlValidator,
             StaticAuditAnalyzer staticAuditAnalyzer,
             ObjectProvider<DynamicPageAnalyzer> dynamicPageAnalyzerProvider,
+            GeminiAssessmentService geminiAssessmentService,
             @Value("${aeolens.crawler.connect-timeout:3s}") Duration connectTimeout,
             @Value("${aeolens.crawler.response-timeout:10s}") Duration responseTimeout,
-            @Value("${aeolens.crawler.max-content-length:4000000}") int maxContentLength,
-            @Value("${aeolens.gemini.api-key:}") String geminiApiKey
+            @Value("${aeolens.crawler.max-content-length:4000000}") int maxContentLength
     ) {
         this.targetUrlValidator = targetUrlValidator;
         this.staticAuditAnalyzer = staticAuditAnalyzer;
         this.dynamicPageAnalyzer = dynamicPageAnalyzerProvider.getIfAvailable();
+        this.geminiAssessmentService = geminiAssessmentService;
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(connectTimeout.toMillis()))
                 .responseTimeout(responseTimeout);
@@ -58,32 +59,35 @@ public class AuditService {
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.TEXT_HTML_VALUE)
                 .build();
         this.responseTimeout = responseTimeout;
-        this.aiConfigured = !geminiApiKey.isBlank();
     }
 
     public Mono<AuditResponse> analyze(String rawUrl) {
         return targetUrlValidator.validate(rawUrl)
                 .flatMap(this::fetchHtml)
                 .flatMap(page -> Mono.fromCallable(() -> analyzePage(page))
-                        .subscribeOn(Schedulers.boundedElastic()));
+                        .subscribeOn(Schedulers.boundedElastic()))
+                .flatMap(page -> geminiAssessmentService.assess(page.response(), page.analyzedHtml()));
     }
 
-    private AuditResponse analyzePage(FetchedPage page) {
+    private AnalyzedPage analyzePage(FetchedPage page) {
+        boolean aiConfigured = geminiAssessmentService.isConfigured();
         AuditResponse staticResponse = staticAuditAnalyzer.analyze(page.uri(), page.html(), aiConfigured);
         if (!staticResponse.crawl().csrLikely() || dynamicPageAnalyzer == null) {
-            return staticResponse;
+            return new AnalyzedPage(staticResponse, page.html());
         }
 
         try {
             RenderedPage renderedPage = dynamicPageAnalyzer.analyze(page.uri());
-            return staticAuditAnalyzer.analyzeDynamic(
+            AuditResponse response = staticAuditAnalyzer.analyzeDynamic(
                     page.uri(), page.html(), renderedPage, aiConfigured);
+            return new AnalyzedPage(response, renderedPage.html());
         } catch (RuntimeException exception) {
             logger.warn("Dynamic analysis failed for {}; returning the static audit", page.uri(), exception);
-            return staticAuditAnalyzer.analyze(
+            AuditResponse response = staticAuditAnalyzer.analyze(
                     page.uri(), page.html(), aiConfigured,
                     "Browser rendering was attempted but could not be completed. "
                             + "Confirm that Playwright Chromium is installed and reachable.");
+            return new AnalyzedPage(response, page.html());
         }
     }
 
@@ -100,5 +104,8 @@ public class AuditService {
     }
 
     private record FetchedPage(URI uri, String html) {
+    }
+
+    private record AnalyzedPage(AuditResponse response, String analyzedHtml) {
     }
 }

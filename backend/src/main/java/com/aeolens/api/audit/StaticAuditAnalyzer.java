@@ -128,8 +128,8 @@ public class StaticAuditAnalyzer {
 
         String aiStatus = aiConfigured ? "ready" : "not-configured";
         String aiFeedback = aiConfigured
-                ? "Gemini credentials are available; contextual scoring can be added without changing the response contract."
-                : "Set GEMINI_API_KEY to enable the Phase 4 contextual assessment.";
+                ? "Gemini contextual assessment is pending."
+                : "Set GEMINI_API_KEY to enable contextual answer-quality assessment.";
 
         return new AuditResponse(
                 UUID.randomUUID(), uri.toString(), Instant.now(), 1,

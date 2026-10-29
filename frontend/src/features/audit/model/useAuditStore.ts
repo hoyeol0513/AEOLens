@@ -55,8 +55,9 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     set({ phase: 'loading', progress: 12, progressLabel: 'Fetching static HTML…', urlError: '', result: null })
     const stages = [
       { progress: 38, progressLabel: 'Mapping semantic structure…' },
-      { progress: 64, progressLabel: 'Checking accessibility rules…' },
-      { progress: 86, progressLabel: 'Preparing the report…' },
+      { progress: 60, progressLabel: 'Checking accessibility rules…' },
+      { progress: 78, progressLabel: 'Evaluating answer context…' },
+      { progress: 91, progressLabel: 'Saving the report…' },
     ]
     let stage = 0
     const progressTimer = window.setInterval(() => {

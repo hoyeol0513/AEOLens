@@ -24,6 +24,7 @@ services:
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com}
       R2DBC_URL: r2dbc:postgresql://database:5432/aeolens
       JDBC_URL: jdbc:postgresql://database:5432/aeolens
       DB_USERNAME: aeolens

@@ -1187,6 +1187,38 @@ main {
   line-height: 1.75;
 }
 
+.ai-context-score {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  width: fit-content;
+  margin-bottom: 18px;
+  padding: 9px 12px;
+  border: 1px solid rgba(155, 135, 245, .28);
+  border-radius: 10px;
+  background: rgba(155, 135, 245, .08);
+}
+
+.ai-context-score span {
+  margin-right: 5px;
+  color: #898397;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+}
+
+.ai-context-score strong {
+  color: #c8baff;
+  font-size: 20px;
+}
+
+.ai-context-score small {
+  color: #777280;
+  font-size: 9px;
+}
+
 .priority-fix {
   position: relative;
   padding: 13px;

@@ -27,12 +27,12 @@ AEOLens/
 | 규칙 기반 진단 | 1차 완료 | JSON-LD 문법, 시맨틱 요소, 제목 계층, CSR 가능성, alt/label 검사 |
 | 프론트/API 연동 | 완료 | `POST /api/v1/audits`, Vite `/api` 프록시, Problem Details 오류 표시 |
 | 동적 렌더링 | 1차 완료 | CSR 의심 페이지를 Playwright Chromium으로 재렌더링하고 렌더링 DOM으로 재진단 |
-| Gemini 문맥 평가 | 설정 지점 구성 | 서버 전용 `GEMINI_API_KEY`와 응답 계약 구성. 실제 호출/프롬프트는 Phase 4 |
+| Gemini 문맥 평가 | 1차 완료 | 서버 전용 키, 구조화 응답, 문맥 점수 반영, 타임아웃/실패 시 규칙 기반 결과 유지 |
 | 대비/터치 영역 | 1차 완료 | computed style 기반 WCAG 텍스트 대비와 44x44 터치 영역 검사. Lighthouse 연동은 후속 단계 |
 | AI 코드 자동 생성 | 미구현 | 현재 UI의 코드는 예시 스니펫이며 Gemini 연동 후 결과 기반으로 교체 필요 |
 | 익명 히스토리 | 1차 완료 | HttpOnly 게스트 세션, PostgreSQL 저장, 최근 20건 조회/상세/삭제, 90일 자동 만료 |
 
-즉, 정적 진단 코어와 UI/API 연결, CSR 대상 Playwright 동적 진단, 로그인 없는 진단 기록 저장까지 실행 가능한 상태입니다. Lighthouse, Gemini와 계정 기반 기기 간 동기화는 후속 페이즈입니다.
+즉, 정적 진단 코어와 UI/API 연결, CSR 대상 Playwright 동적 진단, Gemini 문맥 평가, 로그인 없는 진단 기록 저장까지 실행 가능한 상태입니다. Lighthouse와 계정 기반 기기 간 동기화는 후속 페이즈입니다.
 
 ## 요구 환경
 
@@ -122,7 +122,9 @@ $env:GEMINI_API_KEY = "your-server-side-key"
 .\mvnw.cmd spring-boot:run
 ```
 
-현재 키 설정 여부만 응답에 반영하며 외부 Gemini 호출은 아직 수행하지 않습니다.
+키가 있으면 서버가 렌더링된 페이지의 가시 텍스트만 최대 12,000자까지 Gemini에 전달합니다. 원본 HTML은 전송하지 않으며, 페이지 안의 지시문을 따르지 않도록 시스템 지침으로 분리합니다. Gemini는 0~100 문맥 점수와 개선 피드백을 구조화 JSON으로 반환하고, 최종 AEO 점수는 규칙 기반 70%와 문맥 점수 30%로 계산합니다. 호출이 실패하거나 8초 안에 끝나지 않으면 감사 전체를 실패시키지 않고 규칙 기반 결과를 유지합니다.
+
+모델과 API 주소는 각각 `GEMINI_MODEL`, `GEMINI_BASE_URL`로 변경할 수 있습니다. 요청 형식은 [Gemini generateContent와 구조화 출력 공식 문서](https://ai.google.dev/gemini-api/docs/generate-content/structured-output)를 따릅니다.
 
 ## 주요 파일
 
@@ -133,5 +135,6 @@ $env:GEMINI_API_KEY = "your-server-side-key"
 - `frontend/vite.config.ts` — React/Tailwind 플러그인과 개발 프록시
 - `backend/pom.xml` — WebFlux, Validation, Actuator, Jsoup, Playwright 프로필
 - `backend/src/main/java/com/aeolens/api/audit` — URL 검증, 크롤링, 정적 분석, API 계약
+- `backend/src/main/java/com/aeolens/api/audit/GeminiAssessmentService.java` — 가시 텍스트 기반 Gemini 문맥 평가와 안전한 폴백
 - `backend/src/main/java/com/aeolens/api/history` — 게스트 세션과 기록 저장/조회/삭제/만료 처리
 - `backend/src/main/resources/db/migration` — PostgreSQL Flyway 스키마
