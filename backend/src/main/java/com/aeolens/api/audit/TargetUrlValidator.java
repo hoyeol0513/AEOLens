@@ -17,7 +17,7 @@ public class TargetUrlValidator {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    private URI validateBlocking(String rawUrl) throws Exception {
+    URI validateBlocking(String rawUrl) throws Exception {
         URI uri = URI.create(rawUrl.trim());
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) {

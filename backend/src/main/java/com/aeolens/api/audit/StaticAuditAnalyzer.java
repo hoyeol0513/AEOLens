@@ -24,6 +24,32 @@ public class StaticAuditAnalyzer {
     }
 
     public AuditResponse analyze(URI uri, String html, boolean aiConfigured) {
+        return analyze(uri, html, aiConfigured, null);
+    }
+
+    public AuditResponse analyze(URI uri, String html, boolean aiConfigured, String dynamicFailure) {
+        return analyzeDocument(uri, html, aiConfigured, false, isCsrLikely(html, uri), null, dynamicFailure);
+    }
+
+    public AuditResponse analyzeDynamic(
+            URI uri,
+            String originalHtml,
+            RenderedPage renderedPage,
+            boolean aiConfigured
+    ) {
+        boolean csrLikely = isCsrLikely(originalHtml, uri);
+        return analyzeDocument(uri, renderedPage.html(), aiConfigured, true, csrLikely, renderedPage, null);
+    }
+
+    private AuditResponse analyzeDocument(
+            URI uri,
+            String html,
+            boolean aiConfigured,
+            boolean dynamic,
+            boolean csrLikely,
+            RenderedPage renderedPage,
+            String dynamicFailure
+    ) {
         Document document = Jsoup.parse(html, uri.toString());
         Elements jsonLd = document.select("script[type=application/ld+json]");
         int validJsonLd = (int) jsonLd.stream().filter(this::isValidJson).count();
@@ -34,7 +60,6 @@ public class StaticAuditAnalyzer {
         int headingSkips = countHeadingSkips(document);
         int emptyControls = document.select("button:empty, a[href]:empty").size();
         int h1Count = document.select("h1").size();
-        boolean csrLikely = textLength < 200 && document.select("#root, #app, [data-reactroot]").size() > 0;
 
         int aeo = 100;
         if (jsonLd.isEmpty()) aeo -= 20;
@@ -44,7 +69,7 @@ public class StaticAuditAnalyzer {
         if (headingSkips > 0) aeo -= Math.min(15, headingSkips * 5);
         if (semanticElements < 3) aeo -= 12;
         if (textLength < 500) aeo -= 18;
-        if (csrLikely) aeo -= 20;
+        if (csrLikely && !dynamic) aeo -= 20;
 
         int a11y = 100;
         a11y -= Math.min(28, missingAlt * 4);
@@ -56,6 +81,10 @@ public class StaticAuditAnalyzer {
             a11y -= 10;
         }
         a11y -= Math.min(10, headingSkips * 2);
+        if (renderedPage != null) {
+            a11y -= Math.min(24, renderedPage.insufficientContrast() * 4);
+            a11y -= Math.min(20, renderedPage.smallTouchTargets() * 2);
+        }
 
         aeo = Math.max(0, aeo);
         a11y = Math.max(0, a11y);
@@ -72,10 +101,24 @@ public class StaticAuditAnalyzer {
         addCountIssue(issues, "heading", headingSkips, "Heading hierarchy skips levels",
                 "Skipped heading levels weaken the document outline used by crawlers and screen readers.",
                 "h1, h2, h3, h4, h5, h6", "Keep heading levels sequential and use CSS for visual sizing.");
-        issues.add(new AuditResponse.Issue(
-                "dynamic-visual", "warning", "Visual checks require the dynamic profile",
-                "Color contrast and 44x44 touch targets need computed styles and element bounds from a browser.",
-                1, "rendered DOM", "Run the backend with -Pdynamic-analysis and install Playwright Chromium."));
+        if (renderedPage == null) {
+            String description = dynamicFailure == null
+                    ? "Color contrast and 44x44 touch targets need computed styles and element bounds from a browser."
+                    : dynamicFailure;
+            issues.add(new AuditResponse.Issue(
+                    "dynamic-visual", "warning", "Visual checks require browser rendering",
+                    description, 1, "rendered DOM",
+                    "Run the backend with -Pdynamic-analysis after installing Playwright Chromium."));
+        } else {
+            addCountIssue(issues, "contrast", renderedPage.insufficientContrast(),
+                    "Text has insufficient color contrast",
+                    "Rendered text does not meet the WCAG contrast threshold for its computed size and weight.",
+                    "visible text nodes", "Increase the foreground/background contrast to at least 4.5:1, or 3:1 for large text.");
+            addCountIssue(issues, "touch-target", renderedPage.smallTouchTargets(),
+                    "Interactive targets are smaller than 44x44",
+                    "Small rendered controls are difficult to activate accurately on touch screens.",
+                    "visible interactive elements", "Increase the clickable area to at least 44 by 44 CSS pixels.");
+        }
         if (issues.stream().noneMatch(issue -> issue.severity().equals("critical"))) {
             issues.add(new AuditResponse.Issue(
                     "landmarks", "passed", "Core static checks passed",
@@ -91,9 +134,15 @@ public class StaticAuditAnalyzer {
         return new AuditResponse(
                 UUID.randomUUID(), uri.toString(), Instant.now(), 1,
                 new AuditResponse.Scores(overall, aeo, a11y),
-                new AuditResponse.CrawlSummary("static", csrLikely, textLength, semanticElements, jsonLd.size(), validJsonLd),
+                new AuditResponse.CrawlSummary(dynamic ? "dynamic" : "static", csrLikely, textLength, semanticElements, jsonLd.size(), validJsonLd),
                 new AuditResponse.AiAssessment(aiStatus, null, aiFeedback),
                 List.copyOf(issues));
+    }
+
+    private boolean isCsrLikely(String html, URI uri) {
+        Document document = Jsoup.parse(html, uri.toString());
+        int textLength = document.body() == null ? 0 : document.body().text().length();
+        return textLength < 200 && !document.select("#root, #app, [data-reactroot]").isEmpty();
     }
 
     private boolean isValidJson(Element script) {

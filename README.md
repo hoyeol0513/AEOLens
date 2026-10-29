@@ -26,13 +26,13 @@ AEOLens/
 | 정적 크롤링 | 완료 | URL 검증, 공인 호스트 제한, WebClient 수집, Jsoup 파싱 |
 | 규칙 기반 진단 | 1차 완료 | JSON-LD 문법, 시맨틱 요소, 제목 계층, CSR 가능성, alt/label 검사 |
 | 프론트/API 연동 | 완료 | `POST /api/v1/audits`, Vite `/api` 프록시, Problem Details 오류 표시 |
-| 동적 렌더링 | 기반만 구성 | Playwright를 `dynamic-analysis` Maven 프로필에 분리. 브라우저 분석기는 다음 단계 |
+| 동적 렌더링 | 1차 완료 | CSR 의심 페이지를 Playwright Chromium으로 재렌더링하고 렌더링 DOM으로 재진단 |
 | Gemini 문맥 평가 | 설정 지점 구성 | 서버 전용 `GEMINI_API_KEY`와 응답 계약 구성. 실제 호출/프롬프트는 Phase 4 |
-| 대비/터치 영역 | 미구현 | 렌더링 후 computed style/bounding box 및 Lighthouse 연동 필요 |
+| 대비/터치 영역 | 1차 완료 | computed style 기반 WCAG 텍스트 대비와 44x44 터치 영역 검사. Lighthouse 연동은 후속 단계 |
 | AI 코드 자동 생성 | 미구현 | 현재 UI의 코드는 예시 스니펫이며 Gemini 연동 후 결과 기반으로 교체 필요 |
 | 로그인/히스토리 | 미구현 | REST 확장 구조만 고려되어 있으며 DB는 아직 없음 |
 
-즉, Phase 1과 Phase 2의 정적 진단 코어 및 Phase 3의 UI/API 연결까지 실행 가능한 상태입니다. Playwright/Lighthouse, Gemini, 영속화는 후속 페이즈입니다.
+즉, 정적 진단 코어와 UI/API 연결, CSR 대상 Playwright 동적 진단까지 실행 가능한 상태입니다. Lighthouse, Gemini, 영속화는 후속 페이즈입니다.
 
 ## 요구 환경
 
@@ -87,12 +87,21 @@ Content-Type: application/json
 
 ## 선택 기능
 
-Playwright Java 의존성 확인:
+동적 분석은 별도 Maven 프로필로 분리되어 있습니다. 최초 1회 Chromium을 설치합니다.
 
 ```powershell
 cd backend
-.\mvnw.cmd -Pdynamic-analysis test
+.\mvnw.cmd -Pdynamic-analysis exec:java "-Dexec.mainClass=com.microsoft.playwright.CLI" "-Dexec.args=install chromium"
 ```
+
+이후 동적 프로필로 테스트하거나 서버를 실행합니다.
+
+```powershell
+.\mvnw.cmd -Pdynamic-analysis test
+.\mvnw.cmd -Pdynamic-analysis spring-boot:run
+```
+
+동적 프로필에서는 정적 HTML의 본문이 짧고 `#root`, `#app`, `data-reactroot`가 있는 CSR 의심 페이지만 Chromium으로 다시 렌더링합니다. 렌더링이 실패하면 감사 요청 전체를 실패시키지 않고 정적 결과와 경고를 반환합니다.
 
 Gemini 키는 반드시 프론트의 `VITE_*` 환경변수가 아니라 백엔드 프로세스 환경변수로 설정합니다.
 
