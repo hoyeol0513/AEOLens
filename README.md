@@ -30,21 +30,23 @@ AEOLens/
 | Gemini 문맥 평가 | 설정 지점 구성 | 서버 전용 `GEMINI_API_KEY`와 응답 계약 구성. 실제 호출/프롬프트는 Phase 4 |
 | 대비/터치 영역 | 1차 완료 | computed style 기반 WCAG 텍스트 대비와 44x44 터치 영역 검사. Lighthouse 연동은 후속 단계 |
 | AI 코드 자동 생성 | 미구현 | 현재 UI의 코드는 예시 스니펫이며 Gemini 연동 후 결과 기반으로 교체 필요 |
-| 로그인/히스토리 | 미구현 | REST 확장 구조만 고려되어 있으며 DB는 아직 없음 |
+| 익명 히스토리 | 1차 완료 | HttpOnly 게스트 세션, PostgreSQL 저장, 최근 20건 조회/상세/삭제, 90일 자동 만료 |
 
-즉, 정적 진단 코어와 UI/API 연결, CSR 대상 Playwright 동적 진단까지 실행 가능한 상태입니다. Lighthouse, Gemini, 영속화는 후속 페이즈입니다.
+즉, 정적 진단 코어와 UI/API 연결, CSR 대상 Playwright 동적 진단, 로그인 없는 진단 기록 저장까지 실행 가능한 상태입니다. Lighthouse, Gemini와 계정 기반 기기 간 동기화는 후속 페이즈입니다.
 
 ## 요구 환경
 
 - Node.js 22+
 - Java 17+
+- Docker Desktop 또는 PostgreSQL 17+
 - 별도 Maven 설치 불필요 (`backend/mvnw`, `backend/mvnw.cmd` 포함)
 
 ## 실행
 
-터미널 1 — 백엔드:
+터미널 1 — PostgreSQL과 백엔드:
 
 ```powershell
+docker compose up -d database
 cd backend
 .\mvnw.cmd spring-boot:run
 ```
@@ -76,7 +78,7 @@ Docker가 설치되어 있다면 루트에서 전체 애플리케이션을 함�
 docker compose up --build
 ```
 
-헬스 체크는 `GET http://localhost:8080/actuator/health`, 진단 요청은 아래 형식입니다.
+헬스 체크는 `GET http://localhost:8080/actuator/health`, 진단 요청은 아래 형식입니다. 첫 API 요청에서 서버가 HttpOnly 게스트 쿠키를 발급하고 성공한 진단 결과를 해당 게스트의 기록으로 저장합니다.
 
 ```http
 POST /api/v1/audits
@@ -84,6 +86,16 @@ Content-Type: application/json
 
 {"url":"https://example.com"}
 ```
+
+익명 기록 API는 다음과 같습니다.
+
+```http
+GET    /api/v1/audits             # 최근 기록 최대 20건
+GET    /api/v1/audits/{auditId}   # 저장된 전체 결과
+DELETE /api/v1/audits/{auditId}   # 내 기록 삭제
+```
+
+게스트 쿠키에는 추측하기 어려운 임의 토큰만 저장하며, 데이터베이스에는 토큰의 SHA-256 해시만 보관합니다. 모든 조회와 삭제는 쿠키가 가리키는 게스트 소유권을 확인합니다. 진단 과정에서 수집한 원본 HTML은 저장하지 않고 결과 JSON과 점수, URL, 진단 시각만 90일간 보관합니다. 쿠키를 삭제하거나 다른 브라우저를 사용하면 기존 기록에 다시 접근할 수 없으므로 필요한 결과는 JSON으로도 내려받을 수 있습니다.
 
 ## 선택 기능
 
@@ -116,7 +128,10 @@ $env:GEMINI_API_KEY = "your-server-side-key"
 
 - `frontend/src/App.tsx` — 앱 셸과 페이지 조합
 - `frontend/src/features/audit` — URL 입력, 분석 로딩, 결과 화면과 감사 상태
+- `frontend/src/features/history` — 익명 진단 기록 목록, 상세 열기, 삭제
 - `frontend/src/components/layout` — 사이드바와 상단바를 포함한 공통 레이아웃
 - `frontend/vite.config.ts` — React/Tailwind 플러그인과 개발 프록시
 - `backend/pom.xml` — WebFlux, Validation, Actuator, Jsoup, Playwright 프로필
 - `backend/src/main/java/com/aeolens/api/audit` — URL 검증, 크롤링, 정적 분석, API 계약
+- `backend/src/main/java/com/aeolens/api/history` — 게스트 세션과 기록 저장/조회/삭제/만료 처리
+- `backend/src/main/resources/db/migration` — PostgreSQL Flyway 스키마

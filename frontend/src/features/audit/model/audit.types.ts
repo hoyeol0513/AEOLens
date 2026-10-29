@@ -32,3 +32,13 @@ export interface AuditResult {
   }
   issues: Issue[]
 }
+
+export interface AuditSummary {
+  auditId: string
+  url: string
+  auditedAt: string
+  scores: { overall: number; aeo: number; a11y: number }
+  crawlMode: 'static' | 'dynamic'
+  csrLikely: boolean
+  issueCount: number
+}

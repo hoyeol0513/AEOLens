@@ -1,10 +1,34 @@
 services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: aeolens
+      POSTGRES_USER: aeolens
+      POSTGRES_PASSWORD: aeolens
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aeolens -d aeolens"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
   backend:
     build:
       context: ./backend
+    depends_on:
+      database:
+        condition: service_healthy
     environment:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      R2DBC_URL: r2dbc:postgresql://database:5432/aeolens
+      JDBC_URL: jdbc:postgresql://database:5432/aeolens
+      DB_USERNAME: aeolens
+      DB_PASSWORD: aeolens
+      COOKIE_SECURE: "false"
     ports:
       - "8080:8080"
 
@@ -15,3 +39,6 @@ services:
       - backend
     ports:
       - "6006:80"
+
+volumes:
+  postgres-data:

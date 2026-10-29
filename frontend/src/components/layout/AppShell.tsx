@@ -59,8 +59,8 @@ export function AppShell({ activeSection, onNavigate, onNewAudit, children }: Ap
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="usage-card"><div><span>Monthly audits</span><strong>7 / 20</strong></div><div className="usage-track"><span /></div><small>13 audits remaining</small></div>
-          <button className="account-button" type="button"><span className="avatar">JL</span><span><strong>Jae Lee</strong><small>jae@studio.dev</small></span><span className="more">•••</span></button>
+          <div className="usage-card"><div><span>Guest history</span><strong>90 days</strong></div><div className="usage-track"><span /></div><small>Up to 20 recent audits</small></div>
+          <div className="account-button guest-account"><span className="avatar"><Icon name="history" size={15} /></span><span><strong>Guest workspace</strong><small>Saved in this browser</small></span></div>
         </div>
       </aside>
 

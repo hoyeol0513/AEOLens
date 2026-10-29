@@ -12,6 +12,7 @@ interface AuditState {
   setUrl: (url: string) => void
   runAudit: () => Promise<void>
   resetAudit: () => void
+  showResult: (result: AuditResult) => void
 }
 
 const initialState = {
@@ -32,6 +33,11 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     activeRequest?.abort()
     activeRequest = null
     set(initialState)
+  },
+  showResult: (result) => {
+    activeRequest?.abort()
+    activeRequest = null
+    set({ ...initialState, phase: 'result', result, url: result.url })
   },
   runAudit: async () => {
     const candidate = get().url.trim()

@@ -8,6 +8,7 @@ interface ProblemDetail {
 export async function requestAudit(url: string, signal?: AbortSignal): Promise<AuditResult> {
   const response = await fetch('/api/v1/audits', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
     signal,
