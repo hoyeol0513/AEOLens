@@ -33,14 +33,33 @@ public class TargetUrlValidator {
         }
 
         boolean privateAddress = Arrays.stream(InetAddress.getAllByName(host))
-                .anyMatch(address -> address.isAnyLocalAddress()
-                        || address.isLoopbackAddress()
-                        || address.isLinkLocalAddress()
-                        || address.isSiteLocalAddress()
-                        || address.isMulticastAddress());
+                .anyMatch(this::isNonPublicAddress);
         if (privateAddress) {
             throw new IllegalArgumentException("Private or local network targets are not allowed");
         }
         return uri;
+    }
+
+    private boolean isNonPublicAddress(InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLoopbackAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isMulticastAddress()) {
+            return true;
+        }
+
+        byte[] bytes = address.getAddress();
+        if (bytes.length == 4) {
+            int first = Byte.toUnsignedInt(bytes[0]);
+            int second = Byte.toUnsignedInt(bytes[1]);
+            boolean carrierGradeNat = first == 100 && second >= 64 && second <= 127;
+            boolean benchmarkingRange = first == 198 && (second == 18 || second == 19);
+            boolean reservedRange = first >= 240;
+            return carrierGradeNat || benchmarkingRange || reservedRange;
+        }
+
+        boolean uniqueLocalIpv6 = (Byte.toUnsignedInt(bytes[0]) & 0xfe) == 0xfc;
+        return uniqueLocalIpv6;
     }
 }
