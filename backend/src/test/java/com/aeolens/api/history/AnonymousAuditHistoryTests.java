@@ -75,6 +75,7 @@ class AnonymousAuditHistoryTests {
                 .satisfies(summary -> {
                     assertThat(summary.auditId()).isEqualTo(audit.auditId());
                     assertThat(summary.url()).isEqualTo("https://example.com");
+                    assertThat(summary.issueCount()).isEqualTo(audit.issueSummary().actionable());
                 });
         assertThat(auditHistoryService.find(guest.id(), audit.auditId()).block())
                 .isEqualTo(audit);

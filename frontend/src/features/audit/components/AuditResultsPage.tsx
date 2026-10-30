@@ -32,7 +32,7 @@ export function AuditResultsPage({ result }: { result: AuditResult }) {
       </section>
 
       <ResultOverview result={result} onShowIssues={setIssueFilter} />
-      <IssuesPanel issues={result.issues} activeFilter={issueFilter} onFilterChange={setIssueFilter} />
+      <IssuesPanel issues={result.issues} summary={result.issueSummary} activeFilter={issueFilter} onFilterChange={setIssueFilter} />
       <FixSnippet />
 
       <footer><span>AeoLens analysis engine · v0.1</span><a href="https://www.w3.org/WAI/standards-guidelines/wcag/" target="_blank" rel="noreferrer">Scoring methodology <Icon name="external" size={13} /></a></footer>

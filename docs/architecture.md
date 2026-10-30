@@ -51,3 +51,5 @@ All paths are implemented. Gemini is skipped when no server-side API key is conf
 - The browser cookie deliberately avoids signup friction. Clearing it or switching browsers breaks access to the old anonymous history; JSON export remains the portable fallback until optional account linking is introduced.
 - Gemini receives only normalized visible text, capped at 12,000 characters. Page content is explicitly treated as untrusted data, and a structured response schema constrains the result to a score and concise feedback.
 - Contextual scoring is blended into the rule-based AEO score at a 30% weight. API errors and timeouts return an `unavailable` AI status while preserving the deterministic audit instead of failing the request.
+- AEO and accessibility scores are constrained to 0-100, and the overall score is always their rounded average. Every deterministic score deduction has a matching diagnostic entry.
+- The backend derives one severity summary from the diagnostic list. Result metrics and filter tabs use that summary, while history stores only actionable critical and warning checks; passed checks are not counted as findings.

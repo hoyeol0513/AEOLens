@@ -98,6 +98,7 @@ class AuditApiIntegrationTests {
                     assertThat(summary.auditId()).isEqualTo(auditResponse.auditId());
                     assertThat(summary.url()).isEqualTo(auditResponse.url());
                     assertThat(summary.scores()).isEqualTo(auditResponse.scores());
+                    assertThat(summary.issueCount()).isEqualTo(auditResponse.issueSummary().actionable());
                 });
 
         webTestClient.get()

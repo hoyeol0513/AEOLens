@@ -30,6 +30,13 @@ export interface AuditResult {
     score: number | null
     feedback: string
   }
+  issueSummary: {
+    total: number
+    actionable: number
+    critical: number
+    warning: number
+    passed: number
+  }
   issues: Issue[]
 }
 

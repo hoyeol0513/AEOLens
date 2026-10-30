@@ -149,13 +149,12 @@ public class GeminiAssessmentService {
 
     private AuditResponse merge(AuditResponse response, GeminiAssessment assessment) {
         int contextualAeo = Math.round(response.scores().aeo() * 0.7f + assessment.score() * 0.3f);
-        int overall = Math.round((contextualAeo + response.scores().a11y()) / 2.0f);
         return new AuditResponse(
                 response.auditId(),
                 response.url(),
                 response.auditedAt(),
                 response.scannedPages(),
-                new AuditResponse.Scores(overall, contextualAeo, response.scores().a11y()),
+                AuditResponse.Scores.from(contextualAeo, response.scores().a11y()),
                 response.crawl(),
                 new AuditResponse.AiAssessment("complete", assessment.score(), assessment.feedback()),
                 response.issues());

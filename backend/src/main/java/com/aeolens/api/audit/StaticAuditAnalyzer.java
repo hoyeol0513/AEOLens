@@ -88,10 +88,18 @@ public class StaticAuditAnalyzer {
 
         aeo = Math.max(0, aeo);
         a11y = Math.max(0, a11y);
-        int overall = Math.round((aeo + a11y) / 2.0f);
 
         List<AuditResponse.Issue> issues = new ArrayList<>();
         addSchemaIssue(issues, jsonLd.size(), validJsonLd);
+        if (h1Count == 0) {
+            addConditionIssue(issues, "h1-missing", "warning", "Primary heading is missing",
+                    "A clear H1 helps answer engines and assistive technology identify the page topic.",
+                    "h1", "Add one descriptive H1 that states the primary topic or answer.");
+        } else if (h1Count > 1) {
+            addCountIssue(issues, "h1-multiple", h1Count - 1, "Multiple primary headings were found",
+                    "Competing H1 elements make the page topic less explicit.",
+                    "h1", "Keep one primary H1 and use lower heading levels for subsections.");
+        }
         addCountIssue(issues, "alt", missingAlt, "Images are missing alt text",
                 "Informative images cannot be understood by screen readers or multimodal crawlers.",
                 "img:not([alt])", "Add concise alt text, or alt=\"\" when the image is decorative.");
@@ -101,6 +109,31 @@ public class StaticAuditAnalyzer {
         addCountIssue(issues, "heading", headingSkips, "Heading hierarchy skips levels",
                 "Skipped heading levels weaken the document outline used by crawlers and screen readers.",
                 "h1, h2, h3, h4, h5, h6", "Keep heading levels sequential and use CSS for visual sizing.");
+        addCountIssue(issues, "empty-control", emptyControls, "Interactive elements have no accessible content",
+                "Empty buttons and links do not expose a meaningful name to assistive technology.",
+                "button:empty, a[href]:empty", "Add visible text or an accessible name to every interactive element.");
+        if (document.select("html[lang]").isEmpty()) {
+            addConditionIssue(issues, "document-language", "warning", "Document language is not declared",
+                    "Assistive technology cannot reliably select the correct pronunciation rules.",
+                    "html", "Add the primary language using the html lang attribute.");
+        }
+        if (semanticElements < 3) {
+            addConditionIssue(issues, "semantic-structure", "warning", "Semantic page structure is limited",
+                    "A sparse landmark structure makes important content harder to identify and navigate.",
+                    "main, article, section, nav, header, footer, aside",
+                    "Use semantic landmarks to identify the primary content and supporting regions.");
+        }
+        if (textLength < 500) {
+            addConditionIssue(issues, "content-depth", "warning", "Visible answer content is limited",
+                    "The page may not provide enough self-contained context for answer engines.",
+                    "main", "Provide a direct answer with sufficient supporting context and evidence.");
+        }
+        if (csrLikely && !dynamic) {
+            addConditionIssue(issues, "csr-content", "warning", "Client-rendered content was not available",
+                    "The static response contains too little visible content to evaluate reliably.",
+                    "#root, #app, [data-reactroot]",
+                    "Run dynamic analysis and provide meaningful server-rendered content when possible.");
+        }
         if (renderedPage == null) {
             String description = dynamicFailure == null
                     ? "Color contrast and 44x44 touch targets need computed styles and element bounds from a browser."
@@ -133,7 +166,7 @@ public class StaticAuditAnalyzer {
 
         return new AuditResponse(
                 UUID.randomUUID(), uri.toString(), Instant.now(), 1,
-                new AuditResponse.Scores(overall, aeo, a11y),
+                AuditResponse.Scores.from(aeo, a11y),
                 new AuditResponse.CrawlSummary(dynamic ? "dynamic" : "static", csrLikely, textLength, semanticElements, jsonLd.size(), validJsonLd),
                 new AuditResponse.AiAssessment(aiStatus, null, aiFeedback),
                 List.copyOf(issues));
@@ -202,5 +235,10 @@ public class StaticAuditAnalyzer {
         if (count == 0) return;
         String severity = count >= 3 ? "critical" : "warning";
         issues.add(new AuditResponse.Issue(id, severity, title, description, count, selector, fix));
+    }
+
+    private void addConditionIssue(List<AuditResponse.Issue> issues, String id, String severity, String title,
+                                   String description, String selector, String fix) {
+        issues.add(new AuditResponse.Issue(id, severity, title, description, 1, selector, fix));
     }
 }

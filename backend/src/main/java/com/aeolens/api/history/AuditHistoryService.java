@@ -61,7 +61,7 @@ public class AuditHistoryService {
                 .bind("a11yScore", response.scores().a11y())
                 .bind("crawlMode", response.crawl().mode())
                 .bind("csrLikely", response.crawl().csrLikely())
-                .bind("issueCount", response.issues().size())
+                .bind("issueCount", response.issueSummary().actionable())
                 .bind("resultJson", resultJson)
                 .bind("expiresAt", expiresAt)
                 .fetch()

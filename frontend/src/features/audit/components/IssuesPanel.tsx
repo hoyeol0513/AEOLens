@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Icon } from '../../../shared/ui/Icon'
-import type { Issue, Severity } from '../model/audit.types'
+import type { AuditResult, Issue, Severity } from '../model/audit.types'
 
 const severityLabels: Record<Severity, string> = { critical: 'Critical', warning: 'Warning', passed: 'Passed' }
 
@@ -13,7 +13,7 @@ function IssueRow({ issue, expanded, onToggle }: { issue: Issue; expanded: boole
           <span className="issue-title-line"><strong>{issue.title}</strong><span className={`severity-pill ${issue.severity}`}>{severityLabels[issue.severity]}</span></span>
           <span className="issue-description">{issue.description}</span>
         </span>
-        <span className="issue-count">{issue.count} {issue.count === 1 ? 'page' : 'pages'}</span>
+        <span className="issue-count">{issue.severity === 'passed' ? 'Check passed' : `${issue.count} ${issue.count === 1 ? 'occurrence' : 'occurrences'}`}</span>
         <Icon name="chevron" size={17} />
       </button>
       {expanded && <div className="issue-detail"><div><span className="detail-label">Detected element</span><code>{issue.selector}</code></div><div><span className="detail-label">Recommended fix</span><p>{issue.fix}</p></div></div>}
@@ -25,23 +25,24 @@ export type IssueFilter = 'all' | Severity
 
 interface IssuesPanelProps {
   issues: Issue[]
+  summary: AuditResult['issueSummary']
   activeFilter: IssueFilter
   onFilterChange: (filter: IssueFilter) => void
 }
 
-export function IssuesPanel({ issues, activeFilter, onFilterChange }: IssuesPanelProps) {
+export function IssuesPanel({ issues, summary, activeFilter, onFilterChange }: IssuesPanelProps) {
   const [expandedIssue, setExpandedIssue] = useState<string | null>(null)
   const filteredIssues = useMemo(() => activeFilter === 'all' ? issues : issues.filter((issue) => issue.severity === activeFilter), [activeFilter, issues])
 
   return (
     <section className="card issues-card" id="issues">
       <div className="issues-header">
-        <div><span className="section-kicker">DIAGNOSTICS</span><h2>Issues & opportunities</h2><p>Prioritized by impact on discoverability and usability.</p></div>
+        <div><span className="section-kicker">DIAGNOSTICS</span><h2>Checks & opportunities</h2><p>Prioritized by impact on discoverability and usability.</p></div>
         <div className="filter-tabs" role="tablist" aria-label="Issue filters">
           {(['all', 'critical', 'warning', 'passed'] as const).map((filter) => (
             <button key={filter} type="button" role="tab" aria-selected={activeFilter === filter} className={activeFilter === filter ? 'active' : ''} onClick={() => onFilterChange(filter)}>
-              {filter === 'all' ? 'All issues' : severityLabels[filter]}
-              <span>{filter === 'all' ? issues.length : issues.filter((issue) => issue.severity === filter).length}</span>
+              {filter === 'all' ? 'All checks' : severityLabels[filter]}
+              <span>{filter === 'all' ? summary.total : summary[filter]}</span>
             </button>
           ))}
         </div>

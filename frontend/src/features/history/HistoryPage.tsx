@@ -83,7 +83,7 @@ export function HistoryPage({ onOpenAudit, onNewAudit }: HistoryPageProps) {
         </section>
       ) : (
         <section className="card history-list" aria-label="Saved audits">
-          <div className="history-list-head"><span>Target</span><span>Scores</span><span>Issues</span><span>Audited</span><span /></div>
+          <div className="history-list-head"><span>Target</span><span>Scores</span><span>Findings</span><span>Audited</span><span /></div>
           {entries.map((entry) => {
             const auditedAt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(entry.auditedAt))
             const hostname = (() => { try { return new URL(entry.url).hostname } catch { return entry.url } })()
@@ -98,7 +98,7 @@ export function HistoryPage({ onOpenAudit, onNewAudit }: HistoryPageProps) {
                   <strong className={scoreTone(entry.scores.overall)}>{entry.scores.overall}</strong>
                   <span>AEO {entry.scores.aeo}</span><span>A11y {entry.scores.a11y}</span>
                 </div>
-                <div className="history-issues"><strong>{entry.issueCount}</strong><span>{entry.crawlMode}</span></div>
+                <div className="history-issues"><strong>{entry.issueCount}</strong><span>actionable · {entry.crawlMode}</span></div>
                 <time dateTime={entry.auditedAt}>{auditedAt}</time>
                 <div className="history-actions">
                   <button type="button" disabled={busy} onClick={() => openAudit(entry.auditId)}>{busy ? 'Loading…' : 'Open'}</button>

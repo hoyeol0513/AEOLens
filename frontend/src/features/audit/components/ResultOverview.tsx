@@ -15,8 +15,7 @@ interface ResultOverviewProps {
 }
 
 export function ResultOverview({ result, onShowIssues }: ResultOverviewProps) {
-  const { scores, issues, ai, crawl } = result
-  const criticalCount = issues.filter((issue) => issue.severity === 'critical').length
+  const { scores, issues, issueSummary, ai, crawl } = result
   const highestImpactIssue = issues.find((issue) => issue.severity === 'critical') ?? issues.find((issue) => issue.severity === 'warning')
 
   const showPriorityIssues = () => {
@@ -38,7 +37,7 @@ export function ResultOverview({ result, onShowIssues }: ResultOverviewProps) {
         <MetricCard icon="target" label="Overall score" value={`${scores.overall}`} detail={scoreLabel(scores.overall)} tone="violet" />
         <MetricCard icon="bot" label="AEO score" value={`${scores.aeo}`} detail={scoreLabel(scores.aeo)} tone="blue" />
         <MetricCard icon="activity" label="Accessibility" value={`${scores.a11y}`} detail={scoreLabel(scores.a11y)} tone="green" />
-        <MetricCard icon="alert" label="Critical issues" value={`${criticalCount}`} detail={criticalCount ? 'Needs action' : 'All clear'} tone="red" />
+        <MetricCard icon="alert" label="Critical checks" value={`${issueSummary.critical}`} detail={issueSummary.critical ? 'Needs action' : 'All clear'} tone="red" />
       </section>
 
       <div className="dashboard-grid">

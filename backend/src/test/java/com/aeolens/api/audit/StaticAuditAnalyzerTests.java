@@ -25,8 +25,17 @@ class StaticAuditAnalyzerTests {
 
         assertThat(response.crawl().mode()).isEqualTo("static");
         assertThat(response.crawl().csrLikely()).isTrue();
+        assertThat(response.scores()).isEqualTo(new AuditResponse.Scores(53, 15, 90));
         assertThat(response.issues()).extracting(AuditResponse.Issue::id)
-                .contains("dynamic-visual");
+                .contains(
+                        "schema",
+                        "h1-missing",
+                        "document-language",
+                        "semantic-structure",
+                        "content-depth",
+                        "csr-content",
+                        "dynamic-visual");
+        assertThat(response.issueSummary().actionable()).isEqualTo(response.issues().size());
     }
 
     @Test
@@ -48,5 +57,7 @@ class StaticAuditAnalyzerTests {
         assertThat(response.issues()).extracting(AuditResponse.Issue::id)
                 .contains("contrast", "touch-target")
                 .doesNotContain("dynamic-visual");
+        assertThat(response.issueSummary())
+                .isEqualTo(new AuditResponse.IssueSummary(3, 2, 0, 2, 1));
     }
 }
