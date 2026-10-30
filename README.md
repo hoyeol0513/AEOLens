@@ -26,13 +26,13 @@ AEOLens/
 | 정적 크롤링 | 완료 | URL 검증, 공인 호스트 제한, WebClient 수집, Jsoup 파싱 |
 | 규칙 기반 진단 | 1차 완료 | JSON-LD 문법, 시맨틱 요소, 제목 계층, CSR 가능성, alt/label 검사 |
 | 프론트/API 연동 | 완료 | `POST /api/v1/audits`, Vite `/api` 프록시, Problem Details 오류 표시 |
-| 동적 렌더링 | 1차 완료 | CSR 의심 페이지를 Playwright Chromium으로 재렌더링하고 렌더링 DOM으로 재진단 |
+| 동적 렌더링 | 1차 완료 | 동적 프로필에서 모든 대상 페이지를 Playwright Chromium으로 렌더링하고 렌더링 DOM으로 재진단 |
 | Gemini 문맥 평가 | 1차 완료 | 서버 전용 키, 구조화 응답, 문맥 점수 반영, 타임아웃/실패 시 규칙 기반 결과 유지 |
 | 대비/터치 영역 | 1차 완료 | computed style 기반 WCAG 텍스트 대비와 44x44 터치 영역 검사. Lighthouse 연동은 후속 단계 |
 | AI 코드 자동 생성 | 미구현 | 현재 UI의 코드는 예시 스니펫이며 Gemini 연동 후 결과 기반으로 교체 필요 |
 | 익명 히스토리 | 1차 완료 | HttpOnly 게스트 세션, PostgreSQL 저장, 최근 20건 조회/상세/삭제, 90일 자동 만료 |
 
-즉, 정적 진단 코어와 UI/API 연결, CSR 대상 Playwright 동적 진단, Gemini 문맥 평가, 로그인 없는 진단 기록 저장까지 실행 가능한 상태입니다. Lighthouse와 계정 기반 기기 간 동기화는 후속 페이즈입니다.
+즉, 정적 진단 코어와 UI/API 연결, 선택적 Playwright 동적 진단, Gemini 문맥 평가, 로그인 없는 진단 기록 저장까지 실행 가능한 상태입니다. Lighthouse와 계정 기반 기기 간 동기화는 후속 페이즈입니다.
 
 ## 요구 환경
 
@@ -73,6 +73,7 @@ cd ..\backend
 ```
 
 Docker가 설치되어 있다면 루트에서 전체 애플리케이션을 함께 실행할 수 있습니다.
+Docker 백엔드 이미지는 동적 분석 프로필과 버전이 일치하는 Playwright Chromium을 포함합니다.
 
 ```powershell
 docker compose up --build
@@ -113,7 +114,17 @@ cd backend
 .\mvnw.cmd -Pdynamic-analysis spring-boot:run
 ```
 
-동적 프로필에서는 정적 HTML의 본문이 짧고 `#root`, `#app`, `data-reactroot`가 있는 CSR 의심 페이지만 Chromium으로 다시 렌더링합니다. 렌더링이 실패하면 감사 요청 전체를 실패시키지 않고 정적 결과와 경고를 반환합니다.
+동적 프로필에서는 모든 대상 페이지를 Chromium으로 다시 렌더링합니다. 이 경로에서 CSR 콘텐츠뿐 아니라 computed style 기반 텍스트 대비와 요소 경계 기반 44x44 터치 영역을 검사합니다. 렌더링이 실패하면 감사 요청 전체를 실패시키지 않고 정적 결과와 경고를 반환합니다. 동적 프로필 없이 실행하면 정적 진단만 수행하고 시각 검사가 브라우저 렌더링을 필요로 한다는 경고를 포함합니다.
+
+실제 Chromium을 실행하는 E2E 테스트는 브라우저 설치 후 명시적으로 활성화할 수 있습니다.
+
+```powershell
+$env:PLAYWRIGHT_E2E = "true"
+.\mvnw.cmd -Pdynamic-analysis -Dtest=PlaywrightDynamicPageAnalyzerE2eTests test
+Remove-Item Env:PLAYWRIGHT_E2E
+```
+
+이 테스트는 로컬 HTTP 픽스처를 Chromium으로 렌더링하고 대비 및 터치 영역 메트릭을 확인합니다. `docker-compose.yml`은 로컬 개발 실행을 위한 구성입니다. 신뢰할 수 없는 페이지를 처리하는 운영 환경에서는 브라우저를 별도 비특권 워커로 분리하고 seccomp 및 네트워크 정책을 적용해야 합니다.
 
 Gemini 키는 반드시 프론트의 `VITE_*` 환경변수가 아니라 백엔드 프로세스 환경변수로 설정합니다.
 

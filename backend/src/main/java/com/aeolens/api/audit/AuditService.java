@@ -72,7 +72,7 @@ public class AuditService {
     private AnalyzedPage analyzePage(FetchedPage page) {
         boolean aiConfigured = geminiAssessmentService.isConfigured();
         AuditResponse staticResponse = staticAuditAnalyzer.analyze(page.uri(), page.html(), aiConfigured);
-        if (!staticResponse.crawl().csrLikely() || dynamicPageAnalyzer == null) {
+        if (dynamicPageAnalyzer == null) {
             return new AnalyzedPage(staticResponse, page.html());
         }
 
@@ -85,7 +85,7 @@ public class AuditService {
             logger.warn("Dynamic analysis failed for {}; returning the static audit", page.uri(), exception);
             AuditResponse response = staticAuditAnalyzer.analyze(
                     page.uri(), page.html(), aiConfigured,
-                    "Browser rendering was attempted but could not be completed. "
+                    "Browser-based visual analysis was attempted but could not be completed. "
                             + "Confirm that Playwright Chromium is installed and reachable.");
             return new AnalyzedPage(response, page.html());
         }

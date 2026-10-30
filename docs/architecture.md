@@ -21,6 +21,8 @@ flowchart LR
     B --> V[Public URL validation]
     V --> C[Static HTML crawler]
     C --> J[Jsoup rule engine]
+    C -->|dynamic profile enabled| P[Playwright dynamic analyzer]
+    P -->|rendered DOM and visual metrics| J
     J --> R
     J -->|server key configured| G[Optional Gemini contextual analysis]
     G --> R[AEO and A11y report]
@@ -28,8 +30,6 @@ flowchart LR
     H --> D[(PostgreSQL)]
     D -->|guest-scoped list and detail| B
     B --> F
-    C -->|CSR suspected| P[Playwright dynamic analyzer]
-    P -->|rendered DOM and visual metrics| J
 ```
 
 All paths are implemented. Gemini is skipped when no server-side API key is configured.
@@ -39,9 +39,11 @@ All paths are implemented. Gemini is skipped when no server-side API key is conf
 - The frontend and backend live in one repository so a reviewer can inspect and run the complete product from one entry point.
 - Each application owns its dependencies, build configuration, and container image.
 - The backend acts as a BFF so target-site crawling and API credentials never move into the browser.
-- Static rule checks run first. Browser rendering and AI calls are reserved for cases where they add information, keeping latency and cost bounded.
-- The optional `dynamic-analysis` Maven profile compiles the Playwright adapter. CSR-like shells are rendered in Chromium, then the rendered DOM, computed text colors, and element bounds are folded back into the same audit response.
+- Static rule checks run first. The optional browser pass and AI call enrich the deterministic result while retaining a safe fallback.
+- The optional `dynamic-analysis` Maven profile compiles the Playwright adapter. When enabled, every target page is rendered in Chromium, then the rendered DOM, computed text colors, and element bounds are folded back into the same audit response.
+- The Docker backend is built with the dynamic profile and uses the version-matched Playwright Java image, so local `docker compose` audits include Chromium without a separate browser installation.
 - Browser subrequests are checked with the same public-host policy as the initial URL. A browser failure falls back to the static report instead of failing the full audit.
+- Local Docker Compose uses the browser image for development convenience. A production deployment should isolate untrusted-page rendering in a non-privileged worker with a browser sandbox, seccomp policy, and restricted network access.
 - Public-host validation rejects loopback and private-network targets before crawling.
 - The first API request creates a guest identity and returns a random 256-bit bearer token in an HttpOnly, SameSite=Lax cookie. Only its SHA-256 hash is stored in PostgreSQL.
 - Audit list, detail, and delete queries always include the resolved guest ID, so knowing another audit UUID is not sufficient to access it.

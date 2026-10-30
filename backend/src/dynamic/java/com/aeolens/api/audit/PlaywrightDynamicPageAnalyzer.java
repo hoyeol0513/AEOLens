@@ -105,9 +105,7 @@ public class PlaywrightDynamicPageAnalyzer implements DynamicPageAnalyzer {
     @Override
     public RenderedPage analyze(URI uri) {
         Map<String, Boolean> allowedHosts = new ConcurrentHashMap<>();
-        Playwright.CreateOptions createOptions = new Playwright.CreateOptions()
-                .setEnv(Map.of("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1"));
-        try (Playwright playwright = Playwright.create(createOptions)) {
+        try (Playwright playwright = Playwright.create()) {
             Browser browser = playwright.chromium().launch(
                     new BrowserType.LaunchOptions().setHeadless(true));
             try {

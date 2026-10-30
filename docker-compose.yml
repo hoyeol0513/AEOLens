@@ -18,6 +18,8 @@ services:
   backend:
     build:
       context: ./backend
+    init: true
+    ipc: host
     depends_on:
       database:
         condition: service_healthy
