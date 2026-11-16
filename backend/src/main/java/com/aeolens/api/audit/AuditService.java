@@ -5,7 +5,9 @@ import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.core.io.buffer.DataBufferLimitException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Service;
@@ -24,6 +26,7 @@ import reactor.netty.http.client.HttpClient;
 public class AuditService {
 
     private static final String USER_AGENT = "AeoLensBot/0.1 (+https://github.com/aeolens)";
+    private static final int MAX_REDIRECTS = 5;
     private static final Logger logger = LoggerFactory.getLogger(AuditService.class);
 
     private final TargetUrlValidator targetUrlValidator;
@@ -32,6 +35,7 @@ public class AuditService {
     private final GeminiAssessmentService geminiAssessmentService;
     private final WebClient webClient;
     private final Duration responseTimeout;
+    private final int maxContentLength;
 
     public AuditService(
             TargetUrlValidator targetUrlValidator,
@@ -59,6 +63,7 @@ public class AuditService {
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.TEXT_HTML_VALUE)
                 .build();
         this.responseTimeout = responseTimeout;
+        this.maxContentLength = maxContentLength;
     }
 
     public Mono<AuditResponse> analyze(String rawUrl) {
@@ -92,15 +97,80 @@ public class AuditService {
     }
 
     private Mono<FetchedPage> fetchHtml(URI uri) {
+        return fetchHop(uri, 0)
+                .timeout(responseTimeout)
+                .onErrorMap(AuditService::exceedsBufferLimit, error -> new TargetFetchException(
+                        "The target page is larger than the " + (maxContentLength / 1_000_000)
+                                + " MB audit limit", error));
+    }
+
+    /**
+     * Fetches one URL and follows redirects manually so that every hop is re-validated
+     * against the public-host policy before any request is sent to it.
+     */
+    private Mono<FetchedPage> fetchHop(URI uri, int redirectCount) {
         return webClient.get()
                 .uri(uri)
-                .retrieve()
-                .onStatus(status -> status.isError(), response ->
-                        response.createException().flatMap(Mono::error))
-                .bodyToMono(String.class)
-                .timeout(responseTimeout)
-                .switchIfEmpty(Mono.error(new IllegalStateException("The target returned an empty response")))
-                .map(html -> new FetchedPage(uri, html));
+                .exchangeToMono(response -> {
+                    HttpStatusCode status = response.statusCode();
+                    if (status.is3xxRedirection()) {
+                        String location = response.headers().asHttpHeaders().getFirst(HttpHeaders.LOCATION);
+                        return response.releaseBody().thenReturn(FetchStep.redirect(location));
+                    }
+                    if (status.isError()) {
+                        return response.createException().flatMap(error -> Mono.<FetchStep>error(error));
+                    }
+                    return response.bodyToMono(String.class)
+                            .switchIfEmpty(Mono.error(
+                                    new TargetFetchException("The target returned an empty response")))
+                            .map(html -> FetchStep.page(new FetchedPage(uri, html)));
+                })
+                .flatMap(step -> step.page() != null
+                        ? Mono.just(step.page())
+                        : followRedirect(uri, step.location(), redirectCount));
+    }
+
+    private Mono<FetchedPage> followRedirect(URI from, String location, int redirectCount) {
+        if (redirectCount >= MAX_REDIRECTS) {
+            return Mono.error(new TargetFetchException(
+                    "The target redirected more than " + MAX_REDIRECTS + " times"));
+        }
+        if (location == null || location.isBlank()) {
+            return Mono.error(new TargetFetchException("The target sent a redirect without a Location header"));
+        }
+
+        URI next;
+        try {
+            // URI.resolve mishandles relative references against an empty path ("http://host").
+            URI base = from.getRawPath() == null || from.getRawPath().isEmpty() ? from.resolve("/") : from;
+            next = base.resolve(location.trim());
+        } catch (IllegalArgumentException exception) {
+            return Mono.error(new TargetFetchException("The target sent an invalid redirect location", exception));
+        }
+
+        return targetUrlValidator.validate(next.toString())
+                .onErrorMap(InvalidAuditTargetException.class, error -> new InvalidAuditTargetException(
+                        "The target redirected to a disallowed location: " + error.getMessage(), error))
+                .flatMap(validated -> fetchHop(validated, redirectCount + 1));
+    }
+
+    private static boolean exceedsBufferLimit(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof DataBufferLimitException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private record FetchStep(FetchedPage page, String location) {
+        static FetchStep page(FetchedPage page) {
+            return new FetchStep(page, null);
+        }
+
+        static FetchStep redirect(String location) {
+            return new FetchStep(null, location);
+        }
     }
 
     private record FetchedPage(URI uri, String html) {

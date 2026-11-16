@@ -139,6 +139,48 @@ class AuditApiIntegrationTests {
     }
 
     @Test
+    void mapsAuditFailuresToProblemDetails() {
+        when(auditService.analyze(anyString()))
+                .thenReturn(Mono.error(new InvalidAuditTargetException("The hostname could not be resolved: x")));
+        webTestClient.post()
+                .uri("/api/v1/audits")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"url\":\"https://x.example\"}")
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.title").isEqualTo("Invalid audit target")
+                .jsonPath("$.detail").isEqualTo("The hostname could not be resolved: x");
+
+        when(auditService.analyze(anyString()))
+                .thenReturn(Mono.error(new TargetFetchException("The target redirected more than 5 times")));
+        webTestClient.post()
+                .uri("/api/v1/audits")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"url\":\"https://x.example\"}")
+                .exchange()
+                .expectStatus().isEqualTo(502)
+                .expectBody()
+                .jsonPath("$.title").isEqualTo("Target fetch failed")
+                .jsonPath("$.detail").isEqualTo("The target redirected more than 5 times");
+    }
+
+    @Test
+    void doesNotExposeInternalIllegalArgumentMessages() {
+        when(auditService.analyze(anyString()))
+                .thenReturn(Mono.error(new IllegalArgumentException("internal detail: column xyz")));
+
+        webTestClient.post()
+                .uri("/api/v1/audits")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"url\":\"https://x.example\"}")
+                .exchange()
+                .expectStatus().is5xxServerError()
+                .expectBody(String.class)
+                .value(body -> assertThat(body).doesNotContain("internal detail"));
+    }
+
+    @Test
     void rejectsInvalidRequestBeforeStartingAudit() {
         webTestClient.post()
                 .uri("/api/v1/audits")

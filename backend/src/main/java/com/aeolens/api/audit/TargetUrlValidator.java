@@ -2,6 +2,7 @@ package com.aeolens.api.audit;
 
 import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.Locale;
 
@@ -17,27 +18,43 @@ public class TargetUrlValidator {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
-    URI validateBlocking(String rawUrl) throws Exception {
-        URI uri = URI.create(rawUrl.trim());
+    URI validateBlocking(String rawUrl) {
+        URI uri;
+        try {
+            uri = URI.create(rawUrl.trim());
+        } catch (IllegalArgumentException exception) {
+            throw new InvalidAuditTargetException("The URL is not well-formed", exception);
+        }
+
         String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!scheme.equals("http") && !scheme.equals("https")) {
-            throw new IllegalArgumentException("Only http:// and https:// URLs are supported");
+            throw new InvalidAuditTargetException("Only http:// and https:// URLs are supported");
         }
         if (uri.getUserInfo() != null) {
-            throw new IllegalArgumentException("URLs containing credentials are not supported");
+            throw new InvalidAuditTargetException("URLs containing credentials are not supported");
         }
 
         String host = uri.getHost();
         if (host == null || host.isBlank() || host.equalsIgnoreCase("localhost")) {
-            throw new IllegalArgumentException("A public hostname is required");
+            throw new InvalidAuditTargetException("A public hostname is required");
         }
 
-        boolean privateAddress = Arrays.stream(InetAddress.getAllByName(host))
-                .anyMatch(this::isNonPublicAddress);
+        InetAddress[] addresses;
+        try {
+            addresses = resolve(host);
+        } catch (UnknownHostException exception) {
+            throw new InvalidAuditTargetException("The hostname could not be resolved: " + host, exception);
+        }
+
+        boolean privateAddress = Arrays.stream(addresses).anyMatch(this::isNonPublicAddress);
         if (privateAddress) {
-            throw new IllegalArgumentException("Private or local network targets are not allowed");
+            throw new InvalidAuditTargetException("Private or local network targets are not allowed");
         }
         return uri;
+    }
+
+    InetAddress[] resolve(String host) throws UnknownHostException {
+        return InetAddress.getAllByName(host);
     }
 
     private boolean isNonPublicAddress(InetAddress address) {

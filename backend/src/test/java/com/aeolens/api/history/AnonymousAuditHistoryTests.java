@@ -3,6 +3,9 @@ package com.aeolens.api.history;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.net.URI;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,6 +43,44 @@ class AnonymousAuditHistoryTests {
                 .then(databaseClient.sql("DELETE FROM guest_sessions").fetch().rowsUpdated())
                 .then(databaseClient.sql("DELETE FROM guest_users").fetch().rowsUpdated())
                 .block();
+    }
+
+    @Test
+    void refreshesCookieTogetherWithRollingExpiry() {
+        MockServerWebExchange firstExchange = MockServerWebExchange.from(
+                MockServerHttpRequest.get("/api/v1/audits"));
+        guestSessionService.resolve(firstExchange).block();
+        ResponseCookie cookie = firstExchange.getResponse().getCookies().getFirst("aeolens_guest");
+        assertThat(cookie).isNotNull();
+
+        // A recent session is not rewritten and gets no new cookie.
+        MockServerWebExchange recentExchange = returningExchange(cookie);
+        guestSessionService.resolve(recentExchange).block();
+        assertThat(recentExchange.getResponse().getCookies().getFirst("aeolens_guest")).isNull();
+
+        // A session last seen before the refresh interval gets a new expiry and a re-issued cookie.
+        OffsetDateTime stale = OffsetDateTime.now(ZoneOffset.UTC).minusDays(30);
+        databaseClient.sql("UPDATE guest_sessions SET last_seen_at = :stale, expires_at = :expires")
+                .bind("stale", stale)
+                .bind("expires", stale.plusDays(90))
+                .fetch().rowsUpdated().block();
+
+        MockServerWebExchange staleExchange = returningExchange(cookie);
+        guestSessionService.resolve(staleExchange).block();
+
+        ResponseCookie refreshed = staleExchange.getResponse().getCookies().getFirst("aeolens_guest");
+        assertThat(refreshed).isNotNull();
+        assertThat(refreshed.getValue()).isEqualTo(cookie.getValue());
+        assertThat(refreshed.getMaxAge()).isEqualTo(Duration.ofDays(90));
+        OffsetDateTime expiresAt = databaseClient.sql("SELECT expires_at FROM guest_sessions")
+                .map((row, metadata) -> row.get("expires_at", OffsetDateTime.class))
+                .one().block();
+        assertThat(expiresAt).isAfter(OffsetDateTime.now(ZoneOffset.UTC).plusDays(89));
+    }
+
+    private MockServerWebExchange returningExchange(ResponseCookie cookie) {
+        return MockServerWebExchange.from(MockServerHttpRequest.get("/api/v1/audits")
+                .cookie(new HttpCookie(cookie.getName(), cookie.getValue())));
     }
 
     @Test

@@ -27,6 +27,7 @@ public class GuestSessionService {
     private final DatabaseClient databaseClient;
     private final TransactionalOperator transactionalOperator;
     private final Duration retention;
+    private final Duration refreshInterval;
     private final String cookieName;
     private final boolean secureCookie;
 
@@ -34,12 +35,14 @@ public class GuestSessionService {
             DatabaseClient databaseClient,
             TransactionalOperator transactionalOperator,
             @Value("${aeolens.history.retention:90d}") Duration retention,
+            @Value("${aeolens.guest.refresh-interval:1d}") Duration refreshInterval,
             @Value("${aeolens.guest.cookie-name:aeolens_guest}") String cookieName,
             @Value("${aeolens.guest.secure-cookie:false}") boolean secureCookie
     ) {
         this.databaseClient = databaseClient;
         this.transactionalOperator = transactionalOperator;
         this.retention = retention;
+        this.refreshInterval = refreshInterval;
         this.cookieName = cookieName;
         this.secureCookie = secureCookie;
     }
@@ -50,22 +53,40 @@ public class GuestSessionService {
             return createGuest(exchange);
         }
 
-        String tokenHash = hash(cookie.getValue());
+        String token = cookie.getValue();
+        String tokenHash = hash(token);
         return databaseClient.sql("""
-                        SELECT guest_id
+                        SELECT guest_id, last_seen_at
                         FROM guest_sessions
                         WHERE token_hash = :tokenHash
                           AND expires_at > CURRENT_TIMESTAMP
                         """)
                 .bind("tokenHash", tokenHash)
-                .map((row, metadata) -> new GuestIdentity(row.get("guest_id", UUID.class)))
+                .map((row, metadata) -> new ActiveSession(
+                        new GuestIdentity(row.get("guest_id", UUID.class)),
+                        row.get("last_seen_at", OffsetDateTime.class)))
                 .one()
-                .flatMap(identity -> touch(identity, tokenHash).thenReturn(identity))
-                .switchIfEmpty(createGuest(exchange));
+                .flatMap(session -> refreshIfStale(exchange, session, token, tokenHash))
+                .switchIfEmpty(Mono.defer(() -> createGuest(exchange)));
     }
 
-    private Mono<Void> touch(GuestIdentity identity, String tokenHash) {
+    /**
+     * Rolls the retention window forward. The database expiry and the cookie Max-Age are
+     * always extended together, and at most once per refresh interval to avoid a write on
+     * every request.
+     */
+    private Mono<GuestIdentity> refreshIfStale(
+            ServerWebExchange exchange, ActiveSession session, String token, String tokenHash) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        if (session.lastSeenAt() != null && session.lastSeenAt().isAfter(now.minus(refreshInterval))) {
+            return Mono.just(session.identity());
+        }
+        return touch(session.identity(), tokenHash, now)
+                .then(Mono.fromRunnable(() -> issueCookie(exchange, token)))
+                .thenReturn(session.identity());
+    }
+
+    private Mono<Void> touch(GuestIdentity identity, String tokenHash, OffsetDateTime now) {
         OffsetDateTime expiresAt = now.plus(retention);
         return databaseClient.sql("""
                         UPDATE guest_sessions
@@ -122,14 +143,21 @@ public class GuestSessionService {
                 .thenReturn(new GuestIdentity(guestId));
 
         return transactionalOperator.transactional(creation)
-                .doOnSuccess(identity -> exchange.getResponse().addCookie(ResponseCookie
-                        .from(cookieName, token)
-                        .httpOnly(true)
-                        .secure(secureCookie)
-                        .sameSite("Lax")
-                        .path("/")
-                        .maxAge(retention)
-                        .build()));
+                .doOnSuccess(identity -> issueCookie(exchange, token));
+    }
+
+    private void issueCookie(ServerWebExchange exchange, String token) {
+        exchange.getResponse().addCookie(ResponseCookie
+                .from(cookieName, token)
+                .httpOnly(true)
+                .secure(secureCookie)
+                .sameSite("Lax")
+                .path("/")
+                .maxAge(retention)
+                .build());
+    }
+
+    private record ActiveSession(GuestIdentity identity, OffsetDateTime lastSeenAt) {
     }
 
     private String generateToken() {

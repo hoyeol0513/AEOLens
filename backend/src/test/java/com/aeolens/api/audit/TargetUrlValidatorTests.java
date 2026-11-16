@@ -3,7 +3,9 @@ package com.aeolens.api.audit;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.net.InetAddress;
 import java.net.URI;
+import java.net.UnknownHostException;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -35,6 +37,27 @@ class TargetUrlValidatorTests {
     })
     void rejectsUnsupportedOrNonPublicTargets(String rawUrl) {
         assertThatThrownBy(() -> validator.validateBlocking(rawUrl))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidAuditTargetException.class);
+    }
+
+    @Test
+    void rejectsMalformedUrlAsInvalidTarget() {
+        assertThatThrownBy(() -> validator.validateBlocking("https://exa mple.com/"))
+                .isInstanceOf(InvalidAuditTargetException.class)
+                .hasMessageContaining("not well-formed");
+    }
+
+    @Test
+    void rejectsUnresolvableHostAsInvalidTarget() {
+        TargetUrlValidator unresolvable = new TargetUrlValidator() {
+            @Override
+            InetAddress[] resolve(String host) throws UnknownHostException {
+                throw new UnknownHostException(host);
+            }
+        };
+
+        assertThatThrownBy(() -> unresolvable.validateBlocking("https://no-such-host.example/"))
+                .isInstanceOf(InvalidAuditTargetException.class)
+                .hasMessageContaining("could not be resolved");
     }
 }

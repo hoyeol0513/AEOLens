@@ -1,6 +1,7 @@
 package com.aeolens.api.audit;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
 import java.time.Duration;
@@ -78,14 +79,118 @@ class AuditServiceTests {
         }
     }
 
+    @Test
+    void followsRedirectsAndAuditsTheFinalPage() {
+        DisposableServer server = HttpServer.create()
+                .host("127.0.0.1")
+                .port(0)
+                .route(routes -> routes
+                        .get("/", (request, response) -> response.status(301).header("Location", "/start").send())
+                        .get("/start", (request, response) -> response.status(302).header("Location", "final").send())
+                        .get("/final", (request, response) -> response
+                                .header("Content-Type", "text/html; charset=UTF-8")
+                                .sendString(Mono.just(
+                                        "<html lang=\"en\"><body><main><h1>Final</h1></main></body></html>"))))
+                .bindNow();
+        URI base = URI.create("http://127.0.0.1:" + server.port());
+
+        try {
+            AuditResponse response = service(localServerValidator(base), null)
+                    .analyze("https://example.com")
+                    .block(Duration.ofSeconds(5));
+
+            assertThat(response).isNotNull();
+            assertThat(response.url()).isEqualTo(base + "/final");
+        } finally {
+            server.disposeNow();
+        }
+    }
+
+    @Test
+    void rejectsRedirectToPrivateNetwork() {
+        DisposableServer server = HttpServer.create()
+                .host("127.0.0.1")
+                .port(0)
+                .route(routes -> routes.get("/", (request, response) -> response
+                        .status(302).header("Location", "http://169.254.169.254/latest/meta-data/").send()))
+                .bindNow();
+        URI base = URI.create("http://127.0.0.1:" + server.port());
+
+        try {
+            assertThatThrownBy(() -> service(localServerValidator(base), null)
+                    .analyze("https://example.com")
+                    .block(Duration.ofSeconds(5)))
+                    .isInstanceOf(InvalidAuditTargetException.class)
+                    .hasMessageContaining("redirected to a disallowed location");
+        } finally {
+            server.disposeNow();
+        }
+    }
+
+    @Test
+    void stopsAfterTooManyRedirects() {
+        DisposableServer server = HttpServer.create()
+                .host("127.0.0.1")
+                .port(0)
+                .route(routes -> routes.get("/", (request, response) -> response
+                        .status(302).header("Location", "/").send()))
+                .bindNow();
+        URI base = URI.create("http://127.0.0.1:" + server.port());
+
+        try {
+            assertThatThrownBy(() -> service(localServerValidator(base), null)
+                    .analyze("https://example.com")
+                    .block(Duration.ofSeconds(5)))
+                    .isInstanceOf(TargetFetchException.class)
+                    .hasMessageContaining("redirected more than");
+        } finally {
+            server.disposeNow();
+        }
+    }
+
+    @Test
+    void reportsOversizedPageAsTargetFetchFailure() {
+        DisposableServer server = htmlServer("<html><body>" + "x".repeat(1_100_000) + "</body></html>");
+        URI target = URI.create("http://127.0.0.1:" + server.port());
+
+        try {
+            assertThatThrownBy(() -> service(target, null)
+                    .analyze("https://example.com")
+                    .block(Duration.ofSeconds(5)))
+                    .isInstanceOf(TargetFetchException.class)
+                    .hasMessageContaining("audit limit");
+        } finally {
+            server.disposeNow();
+        }
+    }
+
+    /** Maps the user-facing URL to the local server, allows hops on that server and applies the real policy elsewhere. */
+    private TargetUrlValidator localServerValidator(URI base) {
+        return new TargetUrlValidator() {
+            @Override
+            public Mono<URI> validate(String rawUrl) {
+                if (rawUrl.equals("https://example.com")) {
+                    return Mono.just(base);
+                }
+                if (rawUrl.startsWith(base.toString())) {
+                    return Mono.just(URI.create(rawUrl));
+                }
+                return super.validate(rawUrl);
+            }
+        };
+    }
+
     private AuditService service(URI target, DynamicPageAnalyzer dynamicAnalyzer) {
-        JsonMapper objectMapper = JsonMapper.builder().build();
-        TargetUrlValidator targetUrlValidator = new TargetUrlValidator() {
+        return service(new TargetUrlValidator() {
             @Override
             public Mono<URI> validate(String rawUrl) {
                 return Mono.just(target);
             }
-        };
+        }, dynamicAnalyzer);
+    }
+
+    private AuditService service(TargetUrlValidator targetUrlValidator, DynamicPageAnalyzer dynamicAnalyzer) {
+        JsonMapper objectMapper = JsonMapper.builder().build();
         ObjectProvider<DynamicPageAnalyzer> provider = new ObjectProvider<>() {
             @Override
             public DynamicPageAnalyzer getIfAvailable() {
